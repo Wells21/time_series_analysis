@@ -1,0 +1,312 @@
+---
+title: "Forecasting daily bike rental demand using time series models"
+date: "`r Sys.Date()`"
+output: html_document
+author: "Wellspring Praise"
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+## About Data Analysis Report
+
+This RMarkdown file contains the report of the data analysis done for
+the project on forecasting daily bike rental demand using time series
+models in R. It contains analysis such as data exploration, summary
+statistics and building the time series models. The final report was
+completed on `r date()`.
+
+**Data Description:**
+
+This dataset contains the daily count of rental bike transactions
+between years 2011 and 2012 in Capital bikeshare system with the
+corresponding weather and seasonal information.
+
+Bike-sharing rental process is highly correlated to the environmental
+and seasonal settings. For instance, weather conditions, precipitation,
+day of week, season, hour of the day, etc. can affect the rental
+behaviors.
+
+Bike sharing systems are new generation of traditional bike rentals
+where whole process from membership, rental and return back has become
+automatic. Through these systems, user is able to easily rent a bike
+from a particular position and return back at another position.
+Currently, there are about over 500 bike-sharing programs around the
+world which is composed of over 500 thousands bicycles. Today, there
+exists great interest in these systems due to their important role in
+traffic, environmental and health issues.
+
+More information on the dataset can be gotten from this:
+
+**Data Source:**
+<https://archive.ics.uci.edu/ml/datasets/bike+sharing+dataset>
+
+**Relevant Paper:**
+
+Fanaee-T, Hadi, and Gama, Joao. Event labeling combining ensemble
+detectors and background knowledge, Progress in Artificial Intelligence
+(2013): pp. 1-15, Springer Berlin Heidelberg
+
+### Loading data and installing packages
+
+```{r}
+## Import required packages
+install.packages('stats')
+install.packages('forecast')
+install.packages('highcharter')
+library(stats)
+library(forecast)
+library(highcharter)
+## Loading the datasets
+data <- read.csv("hour.csv")
+```
+
+```{r}
+print(head(data))
+```
+
+### Data cleaning
+
+```{r}
+## checking quality of data before analysis
+
+# Checking if there are any missing values in the data frame (hour_df and day_df)
+cat("Are there any missing data in the dataframe?: ", anyNA(data), "\n")
+```
+
+### Describing and exploring the data
+
+```{r}
+print(summary(data))
+```
+
+This Analysis is centered around the variable 'cnt' which tells us the
+total count of registered users per hour(hour_df) or per day(day_df).
+
+**The summary statistic for the 'cnt' variable shows that;**
+
+-   The minimum registered users on a particular day is 1
+
+-   Has an average number of daily registered users of 190.
+
+### Exploring seasonal effects on the Number of Registered Users
+
+-   **How does Holiday affects the number of Registered users?**
+
+```{r}
+install.packages("dplyr")
+library(dplyr)
+
+holiday_day <- data %>% group_by(holiday) %>% summarize(registered_users = sum(cnt))
+holiday_day <- holiday_day %>% mutate(holiday = recode(holiday, `0` = "No", `1` = "Yes"))
+
+
+print(holiday_day)
+```
+
+Lets put this in a visualization to better present it
+
+```{r}
+barplot(holiday_day$registered_users, names.arg = holiday_day$holiday, col = "blue", main = "Effects of holiday on number of registered users", xlab = "Holiday", ylab = "Number of registered Users")
+```
+
+The seasonality (Holidays) really affects the number of users that
+registers. The difference between the Number of Registered Users when
+there are no holidays and Number of Registered users when there are
+holidays is very large.
+
+The seasonality of holidays, i.e there are holidays, contributes 2.4% to
+the number of users registered in that program.
+
+This explains that, during holidays, most percentage of people don't go
+out for businesses or work.
+
+-   **How does Seasons(spring, summer, fall, winter) affects the number
+    of Registered users?**
+
+Now, lets go over the relationship between the seasons of a year and the
+number of registered users. Does the season have any effect on the
+number of users registering? well, let's quench the curiosity by
+actually looking at how each of them contributes to the number of
+registered users.
+
+Since the seasons variable contains discrete values, we would be using
+the barplot to show the relationship.
+
+```{r}
+## grouping the data 
+seasons <- data %>% group_by(season) %>% summarize(registered_users = sum(cnt))
+seasons <- seasons %>% mutate(season = recode(season, `1` = "spring", `2` = "summer", `3` = "fall", `4` = "winter"))
+
+max_value = max(seasons$registered_users)
+
+barplot(seasons$registered_users, names.arg = seasons$season, col = "purple", main = "Effects of Seasons on number of  registered users", ylim = c(0, max_value+200000), xlab = "seasons", ylab = "Number of registered Users")
+
+```
+
+During the spring seasons, there are low registrations, and during the
+fall season, the number of registration is at its peak than any other
+seasons.
+
+Research tells us that spring season is the period after winter, i.e, it
+is the transmission period from cold to warm, whereby, fall seasons(also
+known as autumn) is the transmission period from warm to cold.
+
+This supports our analysis of number of registered users by seasons. At
+the spring season, the temperature is changing from cold to warm, this
+indicates that a whole population of people don't ride bikes on a sunny
+or hot period, because of health challenges and some other factors.
+While, looking at the fall season(autumn), it has the highest number of
+registered users, this is because there is a change in the temperature
+from warm(hot) to cold.
+
+To put it all together: - Users registers more during a cold season than
+hot(warm) seasons. - And, seasons affect the number of registered users.
+
+-   **Relationship between temperature and the number of registered
+    users?**
+
+```{r}
+plot(x = data$cnt, y = data$temp, main='Relationship Between Temp and Users registration', xlab='No of registered users', ylab='temperature in celscius')
+
+```
+
+The temperature does not neccesarily affect the registration rate of
+users. The visualization shows that there is no correlation between the
+number of registered users and temperature of that day.
+
+### Creating interactive time series plots
+
+```{r}
+# installing packages
+install.packages('timetk')
+install.packages('plotly')
+install.packages('lubridate')
+
+#loading packages
+library(plotly)
+library(timetk)
+library(lubridate)
+
+# getting the time series data
+data_time = data[c('dteday', 'cnt')]
+
+# Converting the date variable to a date format
+data_time$dteday <- as.Date(data_time$dteday)
+
+# Converting the Date column to a time series object using timetk
+data_time <- tk_tbl(data_time, date_var = "dteday")
+
+
+# Create an interactive time series plot using plotly
+plot_ly(data_time, x = ~dteday, y = ~cnt, type = "scatter", mode = "lines") %>%
+  layout(title = "Interactive Time Series Plot", xaxis = list(title = "date"), yaxis = list(title = "number of registered users"))
+```
+
+### Smoothing time series data
+
+Smoothing time series data involves reducing noise or fluctuations in
+the data to reveal underlying trends and patterns more clearly.
+
+There are several methods to smooth time series data. Here we would be
+performing the Holt-Winters exponential smoothing.
+
+```{r}
+install.packages("forecast")
+library(forecast)
+
+# Perform Holt-Winters smoothing
+smoothed_data <- ets(data_time$cnt, model = 'ZZZ')
+
+data_time_smooth <- data_time
+
+data_time_smooth$cnt <- fitted(smoothed_data)
+
+plot(data_time$dteday, data_time$cnt, type = 'l', col = 'red', xlab = 'Date', ylab = 'number of registered users')
+lines(data_time$dteday, fitted(smoothed_data), type = 'l', col = 'blue')
+legend('topleft', legend = c('Original', 'Smoothed'), col = c('red', 'blue'), lty = 1)
+
+```
+
+### Fitting and forecasting time series data using Autoregressive Integrated Moving Average (ARIMA) models
+
+```{r}
+install.packages("tseries")
+library(tseries)
+
+# Checking for stationarity using the Augmented Dickey-Fuller test
+adf_test <- adf.test(data_time_smooth$cnt)
+
+print(adf_test)
+```
+
+We see that the p-value is lower than the significance level of 0.05,
+thereby rejecting the null hypothesis(not stationary) and accepting the
+alternative hypothesis(stationary).
+
+Therefore, we conclude that the data is stationary.
+
+```{r}
+# fitting an arima model
+arima_model <- auto.arima(data_time_smooth$cnt)
+
+print(arima_model)
+```
+
+The auto.arima() function automatically selects the best ARIMA model
+order based on AIC (Akaike Information Criterion).
+
+The ARIMA model it selected, ARIMA(2,1,1) indicates:
+
+AR(2): Two autoregressive terms. I(1): The time series has been
+differenced one times. MA(1): One moving average terms.
+
+```{r}
+#forecasting with the arima model
+forecast_values <- forecast(arima_model, h = 31)  # Forecasting 1 month ahead
+
+print(forecast_values, "\n")
+
+```
+
+```{r}
+cat("Forcasted number of users that will register in the next 1 month: ", sum(forecast_values$mean))
+```
+
+```{r}
+plot(forecast_values, main = "Next 1 Month Forecast", ylim = c(0, 2000), xlim = c(16000, dim(data_time_smooth)[1] + 110), xlab = "Day", ylab = "No of registered users")
+```
+
+The forecasts are shown as a blue line, with the 80% prediction
+intervals as a dark ash shaded area, and the 95% prediction intervals as
+an ash shaded area.
+
+### Findings and Conclusions
+
+-   Seasonality affects the rental demand of bikes
+
+-   The Impacts of each seasons of the year on the rental demand of
+    bikes are as follows:
+
+    -   Fall(Autumn) seasons contributes **32.2%** to the rental demand
+        of bikes.
+
+    -   Summer seasons contributes **27.9%** to the rental demand of
+        bikes.
+
+    -   Winter seasons contributes **25.6%** to the rental demand of
+        bikes.
+
+    -   Spring Season contributes the lowest, **14.3%**, to the rental
+        demand of bikes
+
+-   Holidays has a negative effect on the rental demand of bikes, there
+    is a decrease of demand during holidays.
+
+-   The Fall(Autumn) season contributes the highest to the rental
+    demands of bikes.
+
+-   There is no effect of temperature to the demand of bikes.
+
+-   The time series model forecasts that there would be a **0.06%**
+    increase for the rental demand of bikes within the next 1 month.
